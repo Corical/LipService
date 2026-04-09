@@ -9,10 +9,10 @@ pub fn play_start_sound() {
                 // Rising two-tone beep: 600Hz then 800Hz
                 let tone1 = rodio::source::SineWave::new(600.0)
                     .take_duration(Duration::from_millis(80))
-                    .amplify(0.3);
+                    .amplify(0.08);
                 let tone2 = rodio::source::SineWave::new(800.0)
                     .take_duration(Duration::from_millis(80))
-                    .amplify(0.3);
+                    .amplify(0.08);
                 sink.append(tone1);
                 sink.append(tone2);
                 sink.sleep_until_end();
@@ -29,10 +29,10 @@ pub fn play_stop_sound() {
                 // Falling two-tone beep: 800Hz then 500Hz
                 let tone1 = rodio::source::SineWave::new(800.0)
                     .take_duration(Duration::from_millis(80))
-                    .amplify(0.3);
+                    .amplify(0.08);
                 let tone2 = rodio::source::SineWave::new(500.0)
                     .take_duration(Duration::from_millis(80))
-                    .amplify(0.3);
+                    .amplify(0.08);
                 sink.append(tone1);
                 sink.append(tone2);
                 sink.sleep_until_end();
