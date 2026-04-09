@@ -145,10 +145,10 @@ pub fn load_api_key() -> Result<String, SettingsError> {
 
 pub fn save_with_api_key(api_key: &str, api_base_url: &str) -> Result<(), SettingsError> {
     let encrypted = encrypt_api_key(api_key)?;
-    let settings = AppSettings {
-        api_key_encrypted: encrypted,
-        api_base_url: api_base_url.to_string(),
-        has_completed_setup: true,
-    };
+    // Preserve existing settings, only update key + url
+    let mut settings = load().unwrap_or_default();
+    settings.api_key_encrypted = encrypted;
+    settings.api_base_url = api_base_url.to_string();
+    settings.has_completed_setup = true;
     save(&settings)
 }

@@ -4,6 +4,10 @@ import { invoke } from '@tauri-apps/api/core';
 export interface FrontendSettings {
   api_base_url: string;
   has_completed_setup: boolean;
+  shortcut: string;
+  transcription_model: string;
+  post_processing_model: string;
+  preserve_clipboard: boolean;
 }
 
 export const settings = writable<FrontendSettings | null>(null);
@@ -21,4 +25,25 @@ export async function validateApiKey(key: string, baseUrl: string): Promise<bool
 export async function saveSettings(key: string, baseUrl: string): Promise<void> {
   await invoke('save_settings', { key, baseUrl });
   settings.update((s) => (s ? { ...s, has_completed_setup: true } : s));
+}
+
+export async function updateSettings(opts: {
+  shortcut: string;
+  transcriptionModel: string;
+  postProcessingModel: string;
+  preserveClipboard: boolean;
+}): Promise<void> {
+  await invoke('update_settings', {
+    shortcut: opts.shortcut,
+    transcriptionModel: opts.transcriptionModel,
+    postProcessingModel: opts.postProcessingModel,
+    preserveClipboard: opts.preserveClipboard,
+  });
+  settings.update((s) => s ? {
+    ...s,
+    shortcut: opts.shortcut,
+    transcription_model: opts.transcriptionModel,
+    post_processing_model: opts.postProcessingModel,
+    preserve_clipboard: opts.preserveClipboard,
+  } : s);
 }

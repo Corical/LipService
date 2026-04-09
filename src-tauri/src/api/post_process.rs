@@ -57,17 +57,18 @@ Output hygiene:
 pub struct GroqPostProcessing {
     api_key: String,
     base_url: String,
+    model: String,
     client: reqwest::Client,
 }
 
 impl GroqPostProcessing {
-    pub fn new(api_key: String, base_url: String) -> Self {
+    pub fn new(api_key: String, base_url: String, model: String) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(POST_PROCESSING_TIMEOUT_SECS))
             .build()
             .expect("failed to build HTTP client");
 
-        Self { api_key, base_url, client }
+        Self { api_key, base_url, model, client }
     }
 
     async fn call_model(&self, transcript: &str, model: &str) -> Result<String, ApiError> {
@@ -122,7 +123,8 @@ impl GroqPostProcessing {
 #[async_trait]
 impl PostProcessingService for GroqPostProcessing {
     async fn process(&self, transcript: &str) -> Result<String, ApiError> {
-        match self.call_model(transcript, PRIMARY_MODEL).await {
+        let model = if self.model.is_empty() { PRIMARY_MODEL } else { &self.model };
+        match self.call_model(transcript, model).await {
             Ok(result) => Ok(result),
             Err(ApiError::RequestFailed { status: 429, .. }) => {
                 self.call_model(transcript, FALLBACK_MODEL).await

@@ -30,6 +30,23 @@ struct AppState {
     is_processing: AtomicBool,
 }
 
+fn build_pipeline(api_key: &str, base_url: &str, settings: &settings::types::AppSettings) -> Arc<DictationPipeline> {
+    let transcriber = Arc::new(GroqTranscription::new(
+        api_key.to_string(),
+        base_url.to_string(),
+        settings.transcription_model.clone(),
+    ));
+    let processor = Arc::new(GroqPostProcessing::new(
+        api_key.to_string(),
+        base_url.to_string(),
+        settings.post_processing_model.clone(),
+    ));
+    let recorder = Arc::new(CpalRecorder::new());
+    let clipboard_svc = Arc::new(WindowsClipboard::new(settings.preserve_clipboard));
+
+    Arc::new(DictationPipeline::new(recorder, transcriber, processor, clipboard_svc))
+}
+
 #[tauri::command]
 async fn validate_api_key(key: String, base_url: String) -> Result<bool, String> {
     let url = if base_url.trim().is_empty() {
@@ -53,15 +70,8 @@ async fn save_settings(
     };
     settings::save_with_api_key(&key, &url).map_err(|e| e.to_string())?;
 
-    let transcriber = Arc::new(GroqTranscription::new(key.clone(), url.clone()));
-    let processor = Arc::new(GroqPostProcessing::new(key, url));
-    let recorder = Arc::new(CpalRecorder::new());
-    let clipboard_svc = Arc::new(WindowsClipboard::new());
-
-    let new_pipeline = Arc::new(DictationPipeline::new(
-        recorder, transcriber, processor, clipboard_svc,
-    ));
-
+    let stored = settings::load().map_err(|e| e.to_string())?;
+    let new_pipeline = build_pipeline(&key, &url, &stored);
     *state.pipeline.lock().await = Some(new_pipeline);
     Ok(())
 }
@@ -72,14 +82,46 @@ fn get_settings() -> Result<FrontendSettings, String> {
     Ok(FrontendSettings::from(&s))
 }
 
+#[tauri::command]
+async fn update_settings(
+    shortcut: String,
+    transcription_model: String,
+    post_processing_model: String,
+    preserve_clipboard: bool,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let mut stored = settings::load().map_err(|e| e.to_string())?;
+
+    let shortcut_changed = stored.shortcut != shortcut;
+    stored.shortcut = shortcut.clone();
+    stored.transcription_model = transcription_model;
+    stored.post_processing_model = post_processing_model;
+    stored.preserve_clipboard = preserve_clipboard;
+    settings::save(&stored).map_err(|e| e.to_string())?;
+
+    // Rebuild pipeline with new settings
+    if let Ok(api_key) = settings::decrypt_api_key(&stored.api_key_encrypted) {
+        let new_pipeline = build_pipeline(&api_key, &stored.api_base_url, &stored);
+        *state.pipeline.lock().await = Some(new_pipeline);
+    }
+
+    // Re-register shortcut if changed
+    if shortcut_changed {
+        let gs = app_handle.global_shortcut();
+        let _ = gs.unregister_all();
+        register_shortcut(&app_handle, &shortcut);
+    }
+
+    Ok(())
+}
+
 fn show_overlay(app_handle: &tauri::AppHandle) {
-    // If overlay already exists, just show it
     if let Some(win) = app_handle.get_webview_window("overlay") {
         let _ = win.show();
         return;
     }
 
-    // Create overlay window
     let builder = WebviewWindowBuilder::new(
         app_handle,
         "overlay",
@@ -96,13 +138,10 @@ fn show_overlay(app_handle: &tauri::AppHandle) {
     .visible(true);
 
     if let Ok(win) = builder.build() {
-        // Position at top center of screen
-        if let Ok(monitor) = win.primary_monitor() {
-            if let Some(monitor) = monitor {
-                let screen_width = monitor.size().width as f64 / monitor.scale_factor();
-                let x = (screen_width / 2.0) - 100.0;
-                let _ = win.set_position(tauri::LogicalPosition::new(x, 10.0));
-            }
+        if let Ok(Some(monitor)) = win.primary_monitor() {
+            let screen_width = monitor.size().width as f64 / monitor.scale_factor();
+            let x = (screen_width / 2.0) - 100.0;
+            let _ = win.set_position(tauri::LogicalPosition::new(x, 10.0));
         }
         let _ = win.set_ignore_cursor_events(true);
     }
@@ -117,7 +156,6 @@ fn hide_overlay(app_handle: &tauri::AppHandle) {
 fn start_recording(handle: tauri::AppHandle) {
     let state = handle.state::<AppState>();
 
-    // Guard: don't start if already recording or processing
     if state.is_recording.load(Ordering::SeqCst) || state.is_processing.load(Ordering::SeqCst) {
         return;
     }
@@ -187,6 +225,37 @@ fn stop_recording(handle: tauri::AppHandle) {
     });
 }
 
+fn register_shortcut(app_handle: &tauri::AppHandle, shortcut: &str) {
+    let handle = app_handle.clone();
+    let shortcut_str = shortcut.to_string();
+
+    if let Err(e) = app_handle.global_shortcut().on_shortcut(
+        shortcut_str.as_str(),
+        move |_app, _shortcut, event| {
+            use tauri_plugin_global_shortcut::ShortcutState;
+
+            if !matches!(event.state, ShortcutState::Pressed) {
+                return;
+            }
+
+            let handle = handle.clone();
+            let state = handle.state::<AppState>();
+
+            if state.is_processing.load(Ordering::SeqCst) {
+                return;
+            }
+
+            if state.is_recording.load(Ordering::SeqCst) {
+                stop_recording(handle);
+            } else {
+                start_recording(handle);
+            }
+        },
+    ) {
+        eprintln!("Failed to register shortcut '{}': {}", shortcut, e);
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -200,39 +269,21 @@ fn main() {
             validate_api_key,
             save_settings,
             get_settings,
+            update_settings,
         ])
         .setup(|app| {
             tray::create_tray(app)?;
 
-            if let Ok(stored) = settings::load() {
-                if stored.has_completed_setup {
-                    if let Ok(api_key) = settings::decrypt_api_key(&stored.api_key_encrypted) {
-                        let transcriber = Arc::new(GroqTranscription::new(
-                            api_key.clone(),
-                            stored.api_base_url.clone(),
-                        ));
-                        let processor = Arc::new(GroqPostProcessing::new(
-                            api_key,
-                            stored.api_base_url,
-                        ));
-                        let recorder = Arc::new(CpalRecorder::new());
-                        let clipboard_svc = Arc::new(WindowsClipboard::new());
-                        let new_pipeline = Arc::new(DictationPipeline::new(
-                            recorder, transcriber, processor, clipboard_svc,
-                        ));
+            let stored = settings::load().unwrap_or_default();
 
-                        let state = app.state::<AppState>();
-                        let state_pipeline = state.pipeline.clone();
-                        tauri::async_runtime::spawn(async move {
-                            *state_pipeline.lock().await = Some(new_pipeline);
-                        });
-                    }
-                } else {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.center();
-                        let _ = window.set_focus();
-                    }
+            if stored.has_completed_setup {
+                if let Ok(api_key) = settings::decrypt_api_key(&stored.api_key_encrypted) {
+                    let new_pipeline = build_pipeline(&api_key, &stored.api_base_url, &stored);
+                    let state = app.state::<AppState>();
+                    let state_pipeline = state.pipeline.clone();
+                    tauri::async_runtime::spawn(async move {
+                        *state_pipeline.lock().await = Some(new_pipeline);
+                    });
                 }
             } else {
                 if let Some(window) = app.get_webview_window("main") {
@@ -242,36 +293,9 @@ fn main() {
                 }
             }
 
-            // Register global shortcut — TOGGLE MODE
-            // Tap once to start recording, tap again to stop.
-            let app_handle = app.handle().clone();
-            app.global_shortcut().on_shortcut(
-                hotkey::SHORTCUT,
-                move |_app, _shortcut, event| {
-                    use tauri_plugin_global_shortcut::ShortcutState;
-
-                    // Only act on key press, not release
-                    if !matches!(event.state, ShortcutState::Pressed) {
-                        return;
-                    }
-
-                    let handle = app_handle.clone();
-                    let state = handle.state::<AppState>();
-
-                    if state.is_processing.load(Ordering::SeqCst) {
-                        // Pipeline is processing, ignore
-                        return;
-                    }
-
-                    if state.is_recording.load(Ordering::SeqCst) {
-                        // Currently recording — stop
-                        stop_recording(handle);
-                    } else {
-                        // Not recording — start
-                        start_recording(handle);
-                    }
-                },
-            )?;
+            // Register the configured shortcut
+            let shortcut = stored.shortcut.clone();
+            register_shortcut(app.handle(), &shortcut);
 
             Ok(())
         })

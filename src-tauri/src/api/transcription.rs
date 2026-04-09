@@ -9,17 +9,18 @@ const WHISPER_MODEL: &str = "whisper-large-v3";
 pub struct GroqTranscription {
     api_key: String,
     base_url: String,
+    model: String,
     client: reqwest::Client,
 }
 
 impl GroqTranscription {
-    pub fn new(api_key: String, base_url: String) -> Self {
+    pub fn new(api_key: String, base_url: String, model: String) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(TRANSCRIPTION_TIMEOUT_SECS))
             .build()
             .expect("failed to build HTTP client");
 
-        Self { api_key, base_url, client }
+        Self { api_key, base_url, model, client }
     }
 }
 
@@ -34,7 +35,7 @@ impl TranscriptionService for GroqTranscription {
             .map_err(|e| ApiError::Network(e.to_string()))?;
 
         let form = multipart::Form::new()
-            .text("model", WHISPER_MODEL.to_string())
+            .text("model", if self.model.is_empty() { WHISPER_MODEL.to_string() } else { self.model.clone() })
             .part("file", audio_part);
 
         let response = self.client
