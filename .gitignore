@@ -1,0 +1,6 @@
+node_modules/
+target/
+dist/
+.svelte-kit/
+*.exe
+rustup-init.exe
