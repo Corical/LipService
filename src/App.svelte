@@ -24,7 +24,6 @@
   const TRANSCRIPTION_MODELS = [
     'whisper-large-v3',
     'whisper-large-v3-turbo',
-    'distil-whisper-large-v3-en',
   ];
 
   const POST_PROCESSING_MODELS = [
