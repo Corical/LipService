@@ -101,7 +101,15 @@
     }
   }
 
-  function startShortcutCapture() {
+  async function startShortcutCapture() {
+    // Unregister the global shortcut so it doesn't eat our keypresses
+    try {
+      const { unregisterAll } = await import('@tauri-apps/plugin-global-shortcut');
+      await unregisterAll();
+      console.log('[CAPTURE] unregistered global shortcuts');
+    } catch (e) {
+      console.error('[CAPTURE] failed to unregister:', e);
+    }
     capturingShortcut = true;
     capturedKeys = '';
   }
@@ -196,7 +204,7 @@
         {#if capturingShortcut}
           <div class="shortcut-capture">
             <span class="capture-label">{capturedKeys || 'Press your shortcut...'}</span>
-            <button class="btn-small" onclick={() => { capturingShortcut = false; }}>Cancel</button>
+            <button class="btn-small" onclick={async () => { capturingShortcut = false; await handleSettingsSave(); }}>Cancel</button>
           </div>
         {:else}
           <div class="shortcut-display">
