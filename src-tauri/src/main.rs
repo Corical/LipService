@@ -109,8 +109,12 @@ async fn update_settings(
     // Re-register shortcut if changed
     if shortcut_changed {
         let gs = app_handle.global_shortcut();
-        let _ = gs.unregister_all();
-        register_shortcut(&app_handle, &shortcut);
+        if let Err(e) = gs.unregister_all() {
+            return Err(format!("Failed to unregister old shortcut: {}", e));
+        }
+        if let Err(e) = try_register_shortcut(&app_handle, &shortcut) {
+            return Err(format!("Failed to register shortcut '{}': {}", shortcut, e));
+        }
     }
 
     Ok(())
@@ -225,11 +229,11 @@ fn stop_recording(handle: tauri::AppHandle) {
     });
 }
 
-fn register_shortcut(app_handle: &tauri::AppHandle, shortcut: &str) {
+fn try_register_shortcut(app_handle: &tauri::AppHandle, shortcut: &str) -> Result<(), String> {
     let handle = app_handle.clone();
     let shortcut_str = shortcut.to_string();
 
-    if let Err(e) = app_handle.global_shortcut().on_shortcut(
+    app_handle.global_shortcut().on_shortcut(
         shortcut_str.as_str(),
         move |_app, _shortcut, event| {
             use tauri_plugin_global_shortcut::ShortcutState;
@@ -251,7 +255,11 @@ fn register_shortcut(app_handle: &tauri::AppHandle, shortcut: &str) {
                 start_recording(handle);
             }
         },
-    ) {
+    ).map_err(|e| e.to_string())
+}
+
+fn register_shortcut(app_handle: &tauri::AppHandle, shortcut: &str) {
+    if let Err(e) = try_register_shortcut(app_handle, shortcut) {
         eprintln!("Failed to register shortcut '{}': {}", shortcut, e);
     }
 }
