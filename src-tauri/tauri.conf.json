@@ -42,9 +42,6 @@
       "icons/icon.ico"
     ]
   },
-  "plugins": {
-    "global-shortcut": {
-      "shortcuts": []
-    }
-  }
+  "plugins": {}
+
 }
