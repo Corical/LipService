@@ -14,6 +14,7 @@
   // Settings state
   let tab = $state<'setup' | 'settings'>('setup');
   let shortcut = $state('CmdOrCtrl+Shift+Space');
+  let pendingShortcut = $state(''); // preview only, not applied until save
   let transcriptionModel = $state('whisper-large-v3');
   let postProcessingModel = $state('llama-3.3-70b-versatile');
   let preserveClipboard = $state(true);
@@ -34,7 +35,15 @@
     'gemma2-9b-it',
   ];
 
-  onMount(async () => {
+  function resetUIState() {
+    capturingShortcut = false;
+    capturedKeys = '';
+    pendingShortcut = '';
+    error = '';
+    settingsSaved = false;
+  }
+
+  async function loadFromDisk() {
     try {
       const s = await loadSettings();
       if (s.has_completed_setup) {
@@ -47,13 +56,23 @@
           baseUrl = s.api_base_url;
           showBaseUrl = true;
         }
-        // Only hide on initial app launch, not when reopened from tray
-        // The window starts hidden (tauri.conf.json visible:false),
-        // Rust shows it only when needed. Don't fight that here.
       }
     } catch (e) {
       // First run
     }
+  }
+
+  onMount(async () => {
+    await loadFromDisk();
+
+    // Reset UI state when window is shown (e.g., from tray)
+    const win = getCurrentWindow();
+    await win.onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        resetUIState();
+        loadFromDisk(); // reload saved values
+      }
+    });
   });
 
   async function handleSetupSubmit() {
@@ -81,37 +100,41 @@
   }
 
   async function handleSettingsSave() {
-    console.log('[SAVE] shortcut:', shortcut);
-    console.log('[SAVE] transcriptionModel:', transcriptionModel);
-    console.log('[SAVE] postProcessingModel:', postProcessingModel);
-    console.log('[SAVE] preserveClipboard:', preserveClipboard);
+    const shortcutToSave = pendingShortcut || shortcut;
     try {
       await updateSettings({
-        shortcut,
+        shortcut: shortcutToSave,
         transcriptionModel,
         postProcessingModel,
         preserveClipboard,
       });
-      console.log('[SAVE] success');
+      shortcut = shortcutToSave; // apply to display
+      pendingShortcut = '';
       settingsSaved = true;
       setTimeout(() => { settingsSaved = false; }, 2000);
     } catch (e) {
-      console.error('[SAVE] error:', e);
       error = `Error: ${e}`;
     }
   }
 
   async function startShortcutCapture() {
-    // Unregister the global shortcut so it doesn't eat our keypresses
     try {
       const { unregisterAll } = await import('@tauri-apps/plugin-global-shortcut');
       await unregisterAll();
-      console.log('[CAPTURE] unregistered global shortcuts');
     } catch (e) {
       console.error('[CAPTURE] failed to unregister:', e);
     }
+    pendingShortcut = '';
     capturingShortcut = true;
     capturedKeys = '';
+  }
+
+  async function cancelShortcutCapture() {
+    capturingShortcut = false;
+    pendingShortcut = '';
+    capturedKeys = '';
+    // Re-register the current shortcut since we unregistered it
+    await handleSettingsSave();
   }
 
   function handleShortcutKeydown(e: KeyboardEvent) {
@@ -126,7 +149,6 @@
 
     const key = e.key;
     if (!['Control', 'Shift', 'Alt', 'Meta'].includes(key)) {
-      // Map common keys to Tauri format
       const keyMap: Record<string, string> = {
         ' ': 'Space', 'ArrowUp': 'Up', 'ArrowDown': 'Down',
         'ArrowLeft': 'Left', 'ArrowRight': 'Right', 'Escape': 'Escape',
@@ -137,8 +159,7 @@
       const mappedKey = keyMap[key] || (key.length === 1 ? key.toUpperCase() : key);
       parts.push(mappedKey);
 
-      shortcut = parts.join('+');
-      console.log('[CAPTURE] new shortcut:', shortcut);
+      pendingShortcut = parts.join('+');
       capturingShortcut = false;
     } else {
       capturedKeys = parts.join('+') + '+...';
@@ -146,7 +167,7 @@
   }
 
   function displayShortcut(s: string): string {
-    return s.replace('CmdOrCtrl', 'Ctrl').replace('+', ' + ');
+    return s.replace('CmdOrCtrl', 'Ctrl').replace(/\+/g, ' + ');
   }
 </script>
 
@@ -190,7 +211,7 @@
       </button>
 
       <p class="footer-hint">
-        After setup, tap <kbd>{displayShortcut(shortcut)}</kbd> to start/stop dictation.
+        After setup, tap your shortcut to start/stop dictation.
       </p>
     </div>
   </div>
@@ -204,11 +225,16 @@
         {#if capturingShortcut}
           <div class="shortcut-capture">
             <span class="capture-label">{capturedKeys || 'Press your shortcut...'}</span>
-            <button class="btn-small" onclick={async () => { capturingShortcut = false; await handleSettingsSave(); }}>Cancel</button>
+            <button class="btn-small" onclick={cancelShortcutCapture}>Cancel</button>
           </div>
         {:else}
           <div class="shortcut-display">
-            <kbd class="shortcut-value">{displayShortcut(shortcut)}</kbd>
+            <kbd class="shortcut-value">
+              {displayShortcut(pendingShortcut || shortcut)}
+            </kbd>
+            {#if pendingShortcut}
+              <span class="unsaved-badge">unsaved</span>
+            {/if}
             <button class="btn-small" onclick={startShortcutCapture}>Change</button>
           </div>
         {/if}
@@ -319,9 +345,7 @@
     box-sizing: border-box;
   }
 
-  select {
-    cursor: pointer;
-  }
+  select { cursor: pointer; }
 
   input:focus, select:focus {
     outline: none;
@@ -358,6 +382,16 @@
     color: #fff;
   }
 
+  .unsaved-badge {
+    font-size: 0.65rem;
+    color: #f5a623;
+    background: rgba(245, 166, 35, 0.15);
+    border-radius: 3px;
+    padding: 0.15rem 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
   .capture-label {
     background: #1a1a3a;
     border: 1px solid #4a9eff;
@@ -383,9 +417,7 @@
     cursor: pointer;
   }
 
-  .btn-small:hover {
-    background: #444;
-  }
+  .btn-small:hover { background: #444; }
 
   .hint {
     margin: 0.375rem 0 0;
@@ -408,9 +440,7 @@
     margin-bottom: 0.75rem;
   }
 
-  .toggle-advanced:hover {
-    color: #999;
-  }
+  .toggle-advanced:hover { color: #999; }
 
   .error {
     color: #ff4a4a;
@@ -431,14 +461,8 @@
     margin-top: 0.5rem;
   }
 
-  .primary:hover:not(:disabled) {
-    background: #3a8eef;
-  }
-
-  .primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  .primary:hover:not(:disabled) { background: #3a8eef; }
+  .primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .secondary {
     width: 100%;
@@ -452,10 +476,7 @@
     margin-top: 0.5rem;
   }
 
-  .secondary:hover {
-    color: #ccc;
-    border-color: #555;
-  }
+  .secondary:hover { color: #ccc; border-color: #555; }
 
   .footer-hint {
     text-align: center;
