@@ -82,7 +82,7 @@ fn get_settings() -> Result<FrontendSettings, String> {
     Ok(FrontendSettings::from(&s))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 async fn update_settings(
     shortcut: String,
     transcription_model: String,

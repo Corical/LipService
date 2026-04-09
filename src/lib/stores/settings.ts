@@ -35,9 +35,9 @@ export async function updateSettings(opts: {
 }): Promise<void> {
   await invoke('update_settings', {
     shortcut: opts.shortcut,
-    transcription_model: opts.transcriptionModel,
-    post_processing_model: opts.postProcessingModel,
-    preserve_clipboard: opts.preserveClipboard,
+    transcriptionModel: opts.transcriptionModel,
+    postProcessingModel: opts.postProcessingModel,
+    preserveClipboard: opts.preserveClipboard,
   });
   settings.update((s) => s ? {
     ...s,
