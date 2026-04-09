@@ -179,10 +179,18 @@ fn start_recording(handle: tauri::AppHandle) {
             let guard = state.pipeline.lock().await;
             if let Some(ref pipeline) = *guard {
                 if let Err(e) = pipeline.start_recording() {
-                    let _ = handle.emit("pipeline:error", e.to_string());
+                    let err_msg = e.to_string();
+                    eprintln!("Recording error: {}", err_msg);
+                    let _ = handle.emit("pipeline:error", &err_msg);
                     let _ = handle.emit("pipeline:state", PipelineState::Idle);
                     state.is_recording.store(false, Ordering::SeqCst);
                     hide_overlay(&handle);
+                    use tauri_plugin_notification::NotificationExt;
+                    let _ = handle.notification()
+                        .builder()
+                        .title("LipService Error")
+                        .body(&err_msg)
+                        .show();
                 }
             }
         }
@@ -217,7 +225,16 @@ fn stop_recording(handle: tauri::AppHandle) {
                         let _ = handle.emit("pipeline:result", &result);
                     }
                     Err(e) => {
-                        let _ = handle.emit("pipeline:error", e.to_string());
+                        let err_msg = e.to_string();
+                        eprintln!("Pipeline error: {}", err_msg);
+                        let _ = handle.emit("pipeline:error", &err_msg);
+                        // Show error as notification so user sees it in release mode
+                        use tauri_plugin_notification::NotificationExt;
+                        let _ = handle.notification()
+                            .builder()
+                            .title("LipService Error")
+                            .body(&err_msg)
+                            .show();
                     }
                 }
             }
