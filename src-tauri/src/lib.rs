@@ -4,4 +4,5 @@ pub mod clipboard;
 pub mod hotkey;
 pub mod pipeline;
 pub mod settings;
+pub mod sounds;
 pub mod tray;
