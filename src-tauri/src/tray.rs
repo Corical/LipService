@@ -12,7 +12,7 @@ pub fn create_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
 
     TrayIconBuilder::new()
         .menu(&menu)
-        .tooltip("VTT — Voice to Text")
+        .tooltip("LipService — Voice to Text")
         .icon(app.default_window_icon().unwrap().clone())
         .on_menu_event(|app, event| match event.id.as_ref() {
             "settings" => {

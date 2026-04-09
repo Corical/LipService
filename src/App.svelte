@@ -54,7 +54,7 @@
 {#if !isComplete}
   <div class="container">
     <div class="card">
-      <h1>VTT Setup</h1>
+      <h1>LipService</h1>
       <p class="subtitle">Voice-to-Text for Windows</p>
 
       <div class="form-group">

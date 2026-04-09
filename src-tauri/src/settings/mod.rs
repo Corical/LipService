@@ -20,7 +20,7 @@ pub enum SettingsError {
 
 pub fn settings_dir() -> PathBuf {
     let app_data = dirs::data_dir().expect("no APPDATA directory");
-    app_data.join("VTT")
+    app_data.join("LipService")
 }
 
 fn settings_path() -> PathBuf {

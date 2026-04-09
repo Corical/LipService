@@ -1,14 +1,14 @@
 [package]
-name = "vtt"
+name = "lipservice"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "vtt_lib"
+name = "lipservice_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [[bin]]
-name = "vtt"
+name = "lipservice"
 path = "src/main.rs"
 
 [dependencies]
