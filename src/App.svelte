@@ -81,6 +81,10 @@
   }
 
   async function handleSettingsSave() {
+    console.log('[SAVE] shortcut:', shortcut);
+    console.log('[SAVE] transcriptionModel:', transcriptionModel);
+    console.log('[SAVE] postProcessingModel:', postProcessingModel);
+    console.log('[SAVE] preserveClipboard:', preserveClipboard);
     try {
       await updateSettings({
         shortcut,
@@ -88,9 +92,11 @@
         postProcessingModel,
         preserveClipboard,
       });
+      console.log('[SAVE] success');
       settingsSaved = true;
       setTimeout(() => { settingsSaved = false; }, 2000);
     } catch (e) {
+      console.error('[SAVE] error:', e);
       error = `Error: ${e}`;
     }
   }
@@ -124,6 +130,7 @@
       parts.push(mappedKey);
 
       shortcut = parts.join('+');
+      console.log('[CAPTURE] new shortcut:', shortcut);
       capturingShortcut = false;
     } else {
       capturedKeys = parts.join('+') + '+...';
