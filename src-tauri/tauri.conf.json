@@ -26,11 +26,7 @@
     "security": {
       "csp": null
     },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": false,
-      "tooltip": "LipService — Voice to Text"
-    }
+    "trayIcon": null
   },
   "bundle": {
     "active": true,
