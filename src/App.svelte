@@ -47,7 +47,9 @@
           baseUrl = s.api_base_url;
           showBaseUrl = true;
         }
-        await getCurrentWindow().hide();
+        // Only hide on initial app launch, not when reopened from tray
+        // The window starts hidden (tauri.conf.json visible:false),
+        // Rust shows it only when needed. Don't fight that here.
       }
     } catch (e) {
       // First run
