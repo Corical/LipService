@@ -1,7 +1,7 @@
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    Manager, Runtime,
+    Manager, Runtime, WebviewUrl, WebviewWindowBuilder,
 };
 
 pub fn create_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
@@ -16,8 +16,27 @@ pub fn create_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
         .icon(app.default_window_icon().unwrap().clone())
         .on_menu_event(|app, event| match event.id.as_ref() {
             "settings" => {
+                // Try to show existing window first
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
+                    let _ = window.center();
+                    let _ = window.set_focus();
+                    return;
+                }
+
+                // Window was closed — recreate it
+                if let Ok(window) = WebviewWindowBuilder::new(
+                    app,
+                    "main",
+                    WebviewUrl::default(),
+                )
+                .title("LipService Settings")
+                .inner_size(440.0, 580.0)
+                .resizable(false)
+                .center()
+                .skip_taskbar(true)
+                .build()
+                {
                     let _ = window.set_focus();
                 }
             }

@@ -271,6 +271,15 @@ fn main() {
             get_settings,
             update_settings,
         ])
+        .on_window_event(|window, event| {
+            // Hide window on close instead of destroying it
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             tray::create_tray(app)?;
 
